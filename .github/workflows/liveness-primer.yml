@@ -20,8 +20,8 @@ concurrency:
 env:
   # Exact liveness_primer main commit selected for this simulation.
   LIVENESS_PRIMER_REF: ca2ca73672af451a7faf271ac6786830f68d6834
-  # Both Vulture revisions declare Python 3.14 support.
-  PYTHON_VERSION: "3.14"
+  # Both Vulture revisions declare Python 3.13 support.
+  PYTHON_VERSION: "3.13"
 
 permissions:
   contents: read
