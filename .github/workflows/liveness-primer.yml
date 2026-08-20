@@ -18,14 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Exact liveness_primer main commit selected for this simulation.
+  # Exact liveness_primer main commit for reproducible managed comparisons.
   LIVENESS_PRIMER_REF: ca2ca73672af451a7faf271ac6786830f68d6834
-  # Vulture 2.14 declares support through Python 3.13.
-  PYTHON_VERSION: "3.13"
-  # The historical Vulture revisions use setup.py without a build-system
-  # table, so their otherwise implicit build tools are pinned explicitly.
-  SETUPTOOLS_VERSION: "75.6.0"
-  WHEEL_VERSION: "0.45.1"
+  # liveness_primer supports Python 3.14 and Vulture declares compatibility.
+  PYTHON_VERSION: "3.14"
 
 permissions:
   contents: read
@@ -57,20 +53,6 @@ jobs:
           path: _liveness_primer
           persist-credentials: false
 
-      - name: Check out base Vulture
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          ref: ${{ steps.pr.outputs.base }}
-          path: _vulture_base
-          persist-credentials: false
-
-      - name: Check out head Vulture
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          ref: ${{ steps.pr.outputs.head }}
-          path: _vulture_head
-          persist-credentials: false
-
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
         with:
@@ -78,30 +60,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-glob: _liveness_primer/pyproject.toml
 
-      - name: Build the historical Vulture commands
-        run: |
-          set -euo pipefail
-          uv venv --python "$PYTHON_VERSION" _vulture_base_env
-          uv venv --python "$PYTHON_VERSION" _vulture_head_env
-          uv pip install --python _vulture_base_env/bin/python \
-            "setuptools==$SETUPTOOLS_VERSION" "wheel==$WHEEL_VERSION"
-          uv pip install --python _vulture_head_env/bin/python \
-            "setuptools==$SETUPTOOLS_VERSION" "wheel==$WHEEL_VERSION"
-          uv pip install --python _vulture_base_env/bin/python \
-            --no-deps --no-build-isolation ./_vulture_base
-          uv pip install --python _vulture_head_env/bin/python \
-            --no-deps --no-build-isolation ./_vulture_head
-          _vulture_base_env/bin/vulture --version
-          _vulture_head_env/bin/vulture --version
-
       - name: Compare Vulture revisions across the corpus
         run: |
           set -o pipefail
           uvx --from ./_liveness_primer \
             liveness-primer run \
             --tool vulture \
-            --old-cmd "$GITHUB_WORKSPACE/_vulture_base_env/bin/vulture" \
-            --new-cmd "$GITHUB_WORKSPACE/_vulture_head_env/bin/vulture" \
+            --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
+            --old "${{ steps.pr.outputs.base }}" \
+            --new "${{ steps.pr.outputs.head }}" \
             --all \
             --output github \
             --json-out liveness-primer-report.json \
