@@ -18,10 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Exact liveness_primer main commit selected for this simulation.
+  # Exact liveness_primer main commit for reproducible managed comparisons.
   LIVENESS_PRIMER_REF: ca2ca73672af451a7faf271ac6786830f68d6834
-  # Both Vulture revisions declare Python 3.13 support.
-  PYTHON_VERSION: "3.13"
+  # liveness_primer supports Python 3.14 and Vulture declares compatibility.
+  PYTHON_VERSION: "3.14"
 
 permissions:
   contents: read
@@ -66,7 +66,7 @@ jobs:
           uvx --from ./_liveness_primer \
             liveness-primer run \
             --tool vulture \
-            --repo "${{ github.server_url }}/${{ github.repository }}" \
+            --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
             --old "${{ steps.pr.outputs.base }}" \
             --new "${{ steps.pr.outputs.head }}" \
             --all \
