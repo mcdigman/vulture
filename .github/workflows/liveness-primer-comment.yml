@@ -78,8 +78,8 @@ jobs:
             echo
             awk '/^## Totals$/{f=1;next} f&&/^## /{exit} f' "$report" | grep -v '^legend:'
             echo
-            echo "<sub>Measured when the pull request was opened; later commits are not"
-            echo "reflected. <a href=\"$RUN_URL\">Full report and JSON artifact</a>.</sub>"
+            echo "<sub>Re-measured on every push to the pull request."
+            echo "<a href=\"$RUN_URL\">Full report and JSON artifact</a>.</sub>"
           } > comment.md
 
           if [ "$(wc -c < comment.md)" -gt 65000 ]; then
