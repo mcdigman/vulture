@@ -19,7 +19,7 @@ concurrency:
 
 env:
   # Exact liveness_primer main commit selected for this simulation.
-  LIVENESS_PRIMER_REF: ca2ca73672af451a7faf271ac6786830f68d6834
+  LIVENESS_PRIMER_REF: a45056b68a68f2c2f1cdd4bbd328b71325dbeafe
   # Vulture 2.14 declares support through Python 3.13.
   PYTHON_VERSION: "3.13"
   # The historical Vulture revisions use setup.py without a build-system
