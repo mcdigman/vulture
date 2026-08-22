@@ -56,19 +56,85 @@ jobs:
 
       - name: Compare Vulture revisions across the corpus
         run: |
-          set -o pipefail
-          uvx --from "$LIVENESS_PRIMER_SPEC" \
-            liveness-primer run \
-            --tool vulture \
-            --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
-            --old "${{ steps.pr.outputs.base }}" \
-            --new "${{ steps.pr.outputs.head }}" \
-            --all \
-            --output github \
-            --json-out liveness-primer-report.json \
-            --jobs 4 \
-            --timeout 180 \
+          set -euo pipefail
+          sandbox_user=liveness-primer
+          sudo useradd --system --user-group --no-create-home \
+            --shell /usr/sbin/nologin "$sandbox_user"
+          sandbox_uid=$(id -u "$sandbox_user")
+          sandbox_gid=$(id -g "$sandbox_user")
+          stage_dir=$(mktemp -d /tmp/liveness-primer.XXXXXX)
+          sudo chown "$sandbox_uid:$sandbox_gid" "$stage_dir"
+          sudo chmod 0700 "$stage_dir"
+          sudo -u "$sandbox_user" mkdir \
+            "$stage_dir/home" \
+            "$stage_dir/tmp" \
+            "$stage_dir/uv-cache" \
+            "$stage_dir/uv-tools"
+
+          if sudo -u "$sandbox_user" test -w "$GITHUB_WORKSPACE"; then
+            echo "The unprivileged analysis user can write to the workspace" >&2
+            exit 1
+          fi
+
+          uvx_bin=$(readlink -f "$(command -v uvx)")
+          python_bin=$(readlink -f "$(command -v python)")
+          sandbox_path=$(dirname "$uvx_bin"):$(dirname "$python_bin"):/usr/local/bin:/usr/bin:/bin
+          install -m 0600 /dev/null liveness-primer-report.md
+
+          cleanup_analysis_processes() {
+            for attempt in 1 2 3 4 5; do
+              sudo pkill -KILL -u "$sandbox_uid" >/dev/null 2>&1 || true
+              if ! sudo pgrep -u "$sandbox_uid" >/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+          trap 'cleanup_analysis_processes || true' EXIT
+
+          set +e
+          sudo -u "$sandbox_user" -- env -i \
+            HOME="$stage_dir/home" \
+            LANG=C.UTF-8 \
+            PATH="$sandbox_path" \
+            TMPDIR="$stage_dir/tmp" \
+            UV_CACHE_DIR="$stage_dir/uv-cache" \
+            UV_TOOL_DIR="$stage_dir/uv-tools" \
+            /usr/bin/bash -c 'cd "$HOME" && exec "$@"' bash \
+            "$uvx_bin" --from "$LIVENESS_PRIMER_SPEC" \
+              liveness-primer run \
+              --tool vulture \
+              --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
+              --old "${{ steps.pr.outputs.base }}" \
+              --new "${{ steps.pr.outputs.head }}" \
+              --all \
+              --output github \
+              --json-out "$stage_dir/liveness-primer-report.json" \
+              --jobs 4 \
+              --timeout 180 \
             | tee liveness-primer-report.md >> "$GITHUB_STEP_SUMMARY"
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+
+          if ! cleanup_analysis_processes; then
+            echo "An analysis subprocess survived cleanup" >&2
+            exit 1
+          fi
+          trap - EXIT
+          if [ "${pipeline_status[0]}" -ne 0 ] || [ "${pipeline_status[1]}" -ne 0 ]; then
+            echo "The liveness-primer pipeline failed" >&2
+            exit 1
+          fi
+
+          sudo chown root:root "$stage_dir"
+          sudo chmod 0500 "$stage_dir"
+          sudo test -s "$stage_dir/liveness-primer-report.json"
+          sudo install -o "$(id -u)" -g "$(id -g)" -m 0400 \
+            "$stage_dir/liveness-primer-report.json" \
+            liveness-primer-report.json
+          chmod 0400 liveness-primer-report.md
+          test -s liveness-primer-report.md
 
       - name: Upload liveness_primer report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
