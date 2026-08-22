@@ -56,15 +56,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           number=$(tr -dc '0-9' < report/pr-number.txt | head -c 10)
           test -n "$number"
+          measured_head=$(tr -d '\n' < report/head-sha.txt)
+          if [ "${#measured_head}" -ne 40 ] || [[ "$measured_head" == *[!0-9a-f]* ]]; then
+            echo "The artifact contains an invalid measured head SHA" >&2
+            exit 1
+          fi
           metadata=$(gh api "repos/$REPO/pulls/$number")
           claimed_head=$(jq -r '.head.sha' <<< "$metadata")
-          if [ "$claimed_head" != "$HEAD_SHA" ]; then
-            echo "PR #$number head is $claimed_head, but this run measured $HEAD_SHA" >&2
+          if [ "$claimed_head" != "$measured_head" ]; then
+            echo "PR #$number head is $claimed_head, but this run measured $measured_head" >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" = pull_request ] && [ "$HEAD_SHA" != "$measured_head" ]; then
+            echo "The pull-request event SHA does not match the measured head" >&2
             exit 1
           fi
           base_sha=$(jq -r '.base.sha' <<< "$metadata")
