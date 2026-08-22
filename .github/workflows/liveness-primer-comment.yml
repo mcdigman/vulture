@@ -58,6 +58,12 @@ jobs:
           report=report/liveness-primer-report.md
           test -f "$report"
 
+          awk '
+            /^## Totals$/ { after_totals = 1; next }
+            after_totals && /^## / { in_details = 1 }
+            in_details { print }
+          ' "$report" > report/details.md
+
           {
             echo '<!-- liveness-primer-summary -->'
             echo "### Liveness primer — blast radius of \`${HEAD_SHA:0:12}\`"
@@ -78,15 +84,41 @@ jobs:
             echo
             awk '/^## Totals$/{f=1;next} f&&/^## /{exit} f' "$report" | grep -v '^legend:'
             echo
-            echo "<sub>Re-measured on every push to the pull request."
-            echo "<a href=\"$RUN_URL\">Full report and JSON artifact</a>.</sub>"
           } > comment.md
 
-          if [ "$(wc -c < comment.md)" -gt 65000 ]; then
-            head -c 64000 comment.md > comment.trimmed
-            printf '\n\n<sub>Truncated; see the full report.</sub>\n' >> comment.trimmed
-            mv comment.trimmed comment.md
+          if [ -s report/details.md ]; then
+            {
+              echo '<details>'
+              echo '<summary>Finding details</summary>'
+              echo
+            } >> comment.md
+
+            detail_limit=$((60000 - $(wc -c < comment.md)))
+            if [ "$(wc -c < report/details.md)" -le "$detail_limit" ]; then
+              cat report/details.md >> comment.md
+            else
+              LC_ALL=C awk -v limit="$detail_limit" '
+                length($0) + 1 > limit - used { exit }
+                { print; used += length($0) + 1 }
+              ' report/details.md >> comment.md
+              {
+                echo
+                echo '<sub>Finding details truncated to fit GitHub’s comment size limit.</sub>'
+              } >> comment.md
+            fi
+            {
+              echo
+              echo '</details>'
+              echo
+            } >> comment.md
           fi
+
+          {
+            echo "<sub>Re-measured on every push to the pull request."
+            echo "<a href=\"$RUN_URL\">Full report and JSON artifact</a>.</sub>"
+          } >> comment.md
+
+          test "$(wc -c < comment.md)" -le 65000
 
       - name: Upsert the sticky comment
         env:
