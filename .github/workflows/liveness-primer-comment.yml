@@ -24,6 +24,7 @@ jobs:
     permissions:
       pull-requests: write
       actions: read
+      contents: read
     steps:
       - name: Authenticate the triggering workflow
         env:
@@ -78,19 +79,45 @@ jobs:
             exit 1
           fi
           base_sha=$(jq -r '.base.sha' <<< "$metadata")
-          # Only merged measurement-workflow bytes may supply comment Markdown.
+          merge_sha=$(jq -r '.merge_commit_sha // empty' <<< "$metadata")
+          # Compare the effective PR merge tree with its base parent. Unlike
+          # base.sha, this base snapshot advances when main is merged into a PR.
           workflow_state=unknown
-          if base_workflow=$(gh api \
-            "repos/$REPO/contents/$MEASUREMENT_WORKFLOW_PATH?ref=$base_sha" \
-            --jq 'select(type == "object" and .type == "file") | (.sha // empty)') && \
-            head_workflow=$(gh api \
-              "repos/$REPO/contents/$MEASUREMENT_WORKFLOW_PATH?ref=$claimed_head" \
-              --jq 'select(type == "object" and .type == "file") | (.sha // empty)') && \
-            [ -n "$base_workflow" ] && [ -n "$head_workflow" ]; then
-            if [ "$base_workflow" = "$head_workflow" ]; then
-              workflow_state=unchanged
-            else
-              workflow_state=changed
+          if [ "${#merge_sha}" -eq 40 ] && [[ "$merge_sha" != *[!0-9a-f]* ]]; then
+            if merge_commit=$(gh api "repos/$REPO/git/commits/$merge_sha") && \
+              [ "$(jq '.parents | length' <<< "$merge_commit")" -eq 2 ]; then
+              merge_base=$(jq -r '.parents[0].sha' <<< "$merge_commit")
+              merge_head=$(jq -r '.parents[1].sha' <<< "$merge_commit")
+              if [ "$merge_head" = "$claimed_head" ]; then
+                owner=${REPO%%/*}
+                name=${REPO#*/}
+                if workflow_objects=$(gh api graphql \
+                  -f owner="$owner" \
+                  -f name="$name" \
+                  -f before="$merge_base:$MEASUREMENT_WORKFLOW_PATH" \
+                  -f after="$merge_sha:$MEASUREMENT_WORKFLOW_PATH" \
+                  -f query='query($owner: String!, $name: String!, $before: String!, $after: String!) {
+                    repository(owner: $owner, name: $name) {
+                      before: object(expression: $before) { ... on Blob { oid } }
+                      after: object(expression: $after) { ... on Blob { oid } }
+                    }
+                  }') && jq -e '
+                    ((.errors // []) | length) == 0 and
+                    .data.repository != null
+                  ' >/dev/null <<< "$workflow_objects"; then
+                  base_workflow=$(jq -r \
+                    '.data.repository.before.oid // "absent"' \
+                    <<< "$workflow_objects")
+                  merge_workflow=$(jq -r \
+                    '.data.repository.after.oid // "absent"' \
+                    <<< "$workflow_objects")
+                  if [ "$base_workflow" = "$merge_workflow" ]; then
+                    workflow_state=unchanged
+                  else
+                    workflow_state=changed
+                  fi
+                fi
+              fi
             fi
           fi
           echo "pr=$number" >> "$GITHUB_OUTPUT"
