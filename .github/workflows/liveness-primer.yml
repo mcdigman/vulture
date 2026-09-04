@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # Pre-release test pin containing container mode and the expanded corpus.
-  LIVENESS_PRIMER_REF: 2187a1730b5473afdbbcf330573c8e36295b6656
+  LIVENESS_PRIMER_REF: 4d1b5c391c040d95cdd5f47ebc09798196265135
   # liveness_primer supports Python 3.14 and Vulture declares compatibility.
   PYTHON_VERSION: "3.14"
 
