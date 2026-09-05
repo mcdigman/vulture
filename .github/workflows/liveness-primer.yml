@@ -21,7 +21,7 @@ env:
   # Float on the latest liveness-primer release; releases are the tool's
   # stability boundary for the CLI surface used here.
   LIVENESS_PRIMER_SPEC: "liveness-primer>=0.1"
-  # liveness_primer supports Python 3.14 and Vulture declares compatibility.
+  # Host interpreter for the trusted liveness_primer controller.
   PYTHON_VERSION: "3.14"
 
 permissions:
