@@ -1,6 +1,7 @@
 # 2.17 (unreleased)
 
 * Add support for Python 3.15 and drop 3.9 (Hugo van Kemenade, #416).
+* Fix false positive when iterating over `Enum` (anudaweerasinghe, pm3512, addykan, #304)
 
 # 2.16 (2026-03-25)
 
